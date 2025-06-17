@@ -130,6 +130,15 @@ capi_helm_opts = [
             "generated application credentials."
         ),
     ),
+    cfg.StrOpt(
+        "app_cred_region_name",
+        default="",
+        help=(
+            "Region to set in generated clouds.yaml for application credentials. "
+            "Overrides service region detection like osc.cinder_region_name()."
+        ),
+    ),
+
 ]
 
 CONF = cfg.CONF
