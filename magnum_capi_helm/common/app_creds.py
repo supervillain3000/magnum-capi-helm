@@ -49,6 +49,7 @@ def _get_openstack_ca_certificate():
 
 def _create_app_cred(context, cluster):
     osc = clients.OpenStackClients(context)
+    region_name = CONF.capi_helm.app_cred_region_name or osc.cinder_region_name()
     # TODO(johngarbutt) be sure not to allow the admin role
     # roles = [role for role in context.roles if role != "admin"]
     app_cred = osc.keystone().client.application_credentials.create(
@@ -61,14 +62,14 @@ def _create_app_cred(context, cluster):
         "clouds": {
             "openstack": {
                 "identity_api_version": 3,
-                "region_name": CONF.capi_helm.app_cred_region_name or osc.cinder_region_name(),
+                "region_name": region_name,
                 "interface": CONF.capi_helm.app_cred_interface_type,
                 # This config item indicates whether TLS should be
                 # verified when connecting to the OpenStack API
                 "verify": CONF.drivers.verify_ca,
                 "auth": {
                     "auth_url": osc.url_for(
-                        service_type="identity", interface="public"
+                        service_type="identity", interface="public", region_name=region_name
                     ),
                     "application_credential_id": app_cred.id,
                     "application_credential_secret": app_cred.secret,
