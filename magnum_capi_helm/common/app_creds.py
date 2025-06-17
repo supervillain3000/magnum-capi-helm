@@ -61,7 +61,7 @@ def _create_app_cred(context, cluster):
         "clouds": {
             "openstack": {
                 "identity_api_version": 3,
-                "region_name": osc.cinder_region_name(),
+                "region_name": CONF.capi_helm.app_cred_region_name or osc.cinder_region_name(),
                 "interface": CONF.capi_helm.app_cred_interface_type,
                 # This config item indicates whether TLS should be
                 # verified when connecting to the OpenStack API
