@@ -16,8 +16,8 @@ import requests
 import yaml
 
 from magnum.api import utils as api_utils
-from magnum.common import context as ctx
 from magnum.common import clients
+from magnum.common import context as ctx
 from magnum.common import exception
 from magnum.common import neutron
 from magnum.common import octavia
@@ -967,7 +967,7 @@ class Driver(driver.Driver):
                 },
                 # TODO(mkjpryor): can't enable ingress until code exists to
                 #                 remove the load balancer
-                "ingress": self._get_ingress_enabled(cluster),
+                "ingress": {"enabled": self._get_ingress_enabled(cluster)},
             },
         }
 
@@ -1227,7 +1227,9 @@ class Driver(driver.Driver):
 
             lbs = octavia_client.load_balancer_list().get("loadbalancers", [])
             lbs = [
-                lb for lb in lbs if re.match(pattern, lb.get("description", ""))
+                lb
+                for lb in lbs
+                if re.match(pattern, lb.get("description", ""))
             ]
 
             if not lbs:
@@ -1245,9 +1247,8 @@ class Driver(driver.Driver):
         except Exception as e:
             raise exception.PreDeletionFailed(
                 cluster_uuid=cluster.uuid,
-                msg=f"Error while deleting load balancers: {e}"
+                msg=f"Error while deleting load balancers: {e}",
             )
-
 
     def rotate_credential(self, context, cluster):
         # Current cluster owner to revert to if rotation fails
