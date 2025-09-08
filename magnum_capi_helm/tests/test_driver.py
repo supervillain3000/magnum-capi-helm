@@ -3497,3 +3497,87 @@ class ClusterAPIDriverTest(base.DbTestCase):
             fields.ClusterStatus.UPDATE_FAILED, self.cluster_obj.status
         )
         self.assertIsNotNone(self.cluster_obj.status_reason)
+
+    @mock.patch("magnum_capi_helm.driver.clients.OpenStackClients")
+    @mock.patch("magnum.common.octavia._delete_loadbalancers")
+    @mock.patch("magnum.common.octavia.wait_for_lb_deleted")
+    def test_delete_loadbalancers_success(
+        self, mock_wait, mock_delete_lbs, mock_clients
+    ):
+        cluster = self.cluster_obj
+        lb_desc = f"Kubernetes foo from cluster {cluster.name}"
+        fake_lb = {"id": "lb-123", "description": lb_desc}
+
+        # Fake admin + user clients
+        mock_admin_client = mock.Mock()
+        mock_user_client = mock.Mock()
+
+        mock_admin_octavia = mock.Mock()
+        mock_admin_client.octavia.return_value = mock_admin_octavia
+
+        mock_user_octavia = mock.Mock()
+        mock_user_octavia.load_balancer_list.return_value = {
+            "loadbalancers": [fake_lb]
+        }
+        mock_user_client.octavia.return_value = mock_user_octavia
+
+        mock_clients.side_effect = [mock_admin_client, mock_user_client]
+        mock_delete_lbs.return_value = {"lb-123"}
+
+        # Call method on driver instance
+        self.driver.delete_loadbalancers(self.context, cluster)
+
+        mock_delete_lbs.assert_called_once_with(
+            self.context,
+            [fake_lb],
+            cluster,
+            mock_admin_octavia,
+            remove_fip=True,
+        )
+        mock_wait.assert_called_once_with(mock_user_octavia, {"lb-123"})
+
+    @mock.patch("magnum_capi_helm.driver.clients.OpenStackClients")
+    @mock.patch("magnum.common.octavia._delete_loadbalancers")
+    @mock.patch("magnum.common.octavia.wait_for_lb_deleted")
+    def test_delete_loadbalancers_no_matches(
+        self, mock_wait, mock_delete_lbs, mock_clients
+    ):
+        cluster = self.cluster_obj
+
+        mock_admin_client = mock.Mock()
+        mock_user_client = mock.Mock()
+
+        mock_admin_client.octavia.return_value = mock.Mock()
+        mock_user_octavia = mock.Mock()
+        mock_user_octavia.load_balancer_list.return_value = {
+            "loadbalancers": []
+        }
+        mock_user_client.octavia.return_value = mock_user_octavia
+
+        mock_clients.side_effect = [mock_admin_client, mock_user_client]
+
+        self.driver.delete_loadbalancers(self.context, cluster)
+
+        mock_delete_lbs.assert_not_called()
+        mock_wait.assert_not_called()
+
+    @mock.patch("magnum_capi_helm.driver.clients.OpenStackClients")
+    def test_delete_loadbalancers_raises_exception(self, mock_clients):
+        cluster = self.cluster_obj
+
+        mock_admin_client = mock.Mock()
+        mock_user_client = mock.Mock()
+
+        mock_admin_client.octavia.return_value = mock.Mock()
+        mock_user_octavia = mock.Mock()
+        mock_user_octavia.load_balancer_list.side_effect = RuntimeError("boom")
+        mock_user_client.octavia.return_value = mock_user_octavia
+
+        mock_clients.side_effect = [mock_admin_client, mock_user_client]
+
+        self.assertRaises(
+            exception.PreDeletionFailed,
+            self.driver.delete_loadbalancers,
+            self.context,
+            self.cluster_obj
+        )

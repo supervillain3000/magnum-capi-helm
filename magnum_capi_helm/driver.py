@@ -16,9 +16,11 @@ import requests
 import yaml
 
 from magnum.api import utils as api_utils
+from magnum.common import context as magnum_context
 from magnum.common import clients
 from magnum.common import exception
 from magnum.common import neutron
+from magnum.common import octavia
 from magnum.common import short_id
 from magnum.drivers.common import driver
 from magnum.objects import fields
@@ -633,6 +635,9 @@ class Driver(driver.Driver):
         #  NOTE(mkjpryor) default on, like the heat driver
         return self._get_label_bool(cluster, "kube_dashboard_enabled", True)
 
+    def _get_ingress_enabled(self, cluster):
+        return self._get_label_bool(cluster, "ingress_enabled", False)
+
     def _get_autoheal_enabled(self, cluster):
         return self._get_label_bool(cluster, "auto_healing_enabled", True)
 
@@ -962,7 +967,7 @@ class Driver(driver.Driver):
                 },
                 # TODO(mkjpryor): can't enable ingress until code exists to
                 #                 remove the load balancer
-                "ingress": {"enabled": False},
+                "ingress": self._get_ingress_enabled(cluster),
             },
         }
 
@@ -1127,6 +1132,9 @@ class Driver(driver.Driver):
             # Helm release.
             # Note that this just marks the resources for deletion,
             # it does not wait for the resources to be deleted.
+
+            self.delete_loadbalancers(context, cluster)
+
             self._helm_client.uninstall_release(
                 release_name,
                 namespace=driver_utils.cluster_namespace(cluster),
@@ -1202,6 +1210,44 @@ class Driver(driver.Driver):
             cluster,
             [ng for ng in cluster.nodegroups if ng.name != nodegroup.name],
         )
+
+    def delete_loadbalancers(self, context, cluster):
+        pattern = r"Kubernetes .+ from cluster %s" % re.escape(cluster.name)
+
+        admin_ctx = magnum_context.get_admin_context()
+
+        admin_clients = clients.OpenStackClients(admin_ctx)
+        user_clients = clients.OpenStackClients(context)
+
+        candidates = set()
+
+        try:
+            octavia_admin_client = admin_clients.octavia()
+            octavia_client = user_clients.octavia()
+
+            lbs = octavia_client.load_balancer_list().get("loadbalancers", [])
+            lbs = [
+                lb for lb in lbs if re.match(pattern, lb.get("description", ""))
+            ]
+
+            if not lbs:
+                return
+
+            deleted = octavia._delete_loadbalancers(
+                context, lbs, cluster, octavia_admin_client, remove_fip=True
+            )
+            candidates.update(deleted)
+
+            if not candidates:
+                return
+
+            octavia.wait_for_lb_deleted(octavia_client, candidates)
+        except Exception as e:
+            raise exception.PreDeletionFailed(
+                cluster_uuid=cluster.uuid,
+                msg=f"Error while deleting load balancers: {e}"
+            )
+
 
     def rotate_credential(self, context, cluster):
         # Current cluster owner to revert to if rotation fails
