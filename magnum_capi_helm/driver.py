@@ -16,7 +16,7 @@ import requests
 import yaml
 
 from magnum.api import utils as api_utils
-from magnum.common import context as magnum_context
+from magnum.common import context as ctx
 from magnum.common import clients
 from magnum.common import exception
 from magnum.common import neutron
@@ -1214,7 +1214,7 @@ class Driver(driver.Driver):
     def delete_loadbalancers(self, context, cluster):
         pattern = r"Kubernetes .+ from cluster %s" % re.escape(cluster.name)
 
-        admin_ctx = magnum_context.get_admin_context()
+        admin_ctx = ctx.get_admin_context()
 
         admin_clients = clients.OpenStackClients(admin_ctx)
         user_clients = clients.OpenStackClients(context)
